@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VideoCache {
+  id           String   @id @default(cuid())
+  videoId      String   @unique
+  title        String
+  folder       String?
+  embedLink    String
+  poster       String?
+  views        Int      @default(0)
+  duration     Int?
+  quality      Int?
+  size         String?
+  dateUploaded String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
