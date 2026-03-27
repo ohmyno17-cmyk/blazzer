@@ -6,6 +6,9 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import VideoPlayer from '@/components/video/VideoPlayer';
@@ -23,9 +26,16 @@ import {
   Shield,
   Flame,
   Shuffle,
-  Search,
   Menu,
-  X
+  X,
+  Settings,
+  Upload,
+  Link2,
+  Loader2,
+  CheckCircle,
+  XCircle,
+  Trash2,
+  ExternalLink
 } from 'lucide-react';
 
 interface VideoInfo {
@@ -64,6 +74,16 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+
+  // Admin state
+  const [uploadUrl, setUploadUrl] = useState('');
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadFolder, setUploadFolder] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{success: boolean; message: string; videoId?: string} | null>(null);
+  const [deleteVideoId, setDeleteVideoId] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const fetchVideoData = async () => {
@@ -87,7 +107,6 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
           setVideoCache(currentVideo || null);
           setAllVideos(allVideosData.file);
           
-          // Sort by newest and get related videos
           const sorted = allVideosData.file
             .filter(v => v.video_id !== resolvedParams.id)
             .sort((a, b) => {
@@ -143,6 +162,82 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
     }
   };
 
+  const handleUpload = async () => {
+    if (!uploadUrl.trim()) {
+      toast({ title: 'Error', description: 'Please enter a video URL', variant: 'destructive' });
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const res = await fetch('/api/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: uploadUrl,
+          title: uploadTitle || undefined,
+          folder: uploadFolder || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.status === 'success') {
+        setUploadResult({
+          success: true,
+          message: 'Video uploaded successfully!',
+          videoId: data.video_id || data.file?.video_id,
+        });
+        setUploadUrl('');
+        setUploadTitle('');
+        setUploadFolder('');
+        toast({ title: 'Success', description: 'Video uploaded successfully!' });
+      } else {
+        setUploadResult({
+          success: false,
+          message: data.msg || data.error || 'Upload failed',
+        });
+      }
+    } catch {
+      setUploadResult({
+        success: false,
+        message: 'Failed to connect to server',
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteVideoId.trim()) {
+      toast({ title: 'Error', description: 'Please enter a video ID', variant: 'destructive' });
+      return;
+    }
+
+    setDeleting(true);
+
+    try {
+      const res = await fetch(`/api/videos/${deleteVideoId}`, {
+        method: 'DELETE',
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.status === 'success') {
+        toast({ title: 'Success', description: 'Video deleted successfully!' });
+        setDeleteVideoId('');
+      } else {
+        toast({ title: 'Error', description: data.msg || data.error || 'Delete failed', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Error', description: 'Failed to connect to server', variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const title = videoCache?.title || videoInfo?.title || 'Video';
 
   return (
@@ -186,6 +281,160 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
                 <Sparkles className="w-3.5 h-3.5" />
                 New
               </Link>
+              
+              {/* Admin Button */}
+              <Dialog open={adminOpen} onOpenChange={setAdminOpen}>
+                <DialogTrigger asChild>
+                  <button className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-neutral-400 hover:text-white hover:bg-neutral-800/50 transition-all duration-200">
+                    <Settings className="w-3.5 h-3.5" />
+                    Admin
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="bg-neutral-900 border-neutral-800 text-white max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-lg">
+                      <Settings className="w-5 h-5" />
+                      Admin Panel
+                    </DialogTitle>
+                  </DialogHeader>
+                  
+                  <Tabs defaultValue="upload" className="mt-4">
+                    <TabsList className="bg-neutral-800/50 border-neutral-700 w-full">
+                      <TabsTrigger value="upload" className="flex-1 data-[state=active]:bg-white data-[state=active]:text-neutral-900">
+                        <Upload className="w-4 h-4 mr-1.5" />
+                        Upload
+                      </TabsTrigger>
+                      <TabsTrigger value="delete" className="flex-1 data-[state=active]:bg-white data-[state=active]:text-neutral-900">
+                        <Trash2 className="w-4 h-4 mr-1.5" />
+                        Delete
+                      </TabsTrigger>
+                    </TabsList>
+                    
+                    {/* Upload Tab */}
+                    <TabsContent value="upload" className="mt-4 space-y-4">
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs text-neutral-400 mb-1.5 block">Video URL *</label>
+                          <div className="relative">
+                            <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                            <Input
+                              type="url"
+                              placeholder="https://example.com/video.mp4"
+                              value={uploadUrl}
+                              onChange={(e) => setUploadUrl(e.target.value)}
+                              className="pl-10 h-10 bg-neutral-800 border-neutral-700 focus:border-neutral-500 text-white placeholder:text-neutral-500"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <label className="text-xs text-neutral-400 mb-1.5 block">Title (optional)</label>
+                          <Input
+                            type="text"
+                            placeholder="Video title"
+                            value={uploadTitle}
+                            onChange={(e) => setUploadTitle(e.target.value)}
+                            className="h-10 bg-neutral-800 border-neutral-700 focus:border-neutral-500 text-white placeholder:text-neutral-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="text-xs text-neutral-400 mb-1.5 block">Folder (optional)</label>
+                          <Input
+                            type="text"
+                            placeholder="Category name"
+                            value={uploadFolder}
+                            onChange={(e) => setUploadFolder(e.target.value)}
+                            className="h-10 bg-neutral-800 border-neutral-700 focus:border-neutral-500 text-white placeholder:text-neutral-500"
+                          />
+                        </div>
+                        
+                        <Button
+                          onClick={handleUpload}
+                          disabled={uploading || !uploadUrl.trim()}
+                          className="w-full h-10 bg-white text-neutral-900 hover:bg-neutral-200 disabled:opacity-50"
+                        >
+                          {uploading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4 mr-2" />
+                              Upload Video
+                            </>
+                          )}
+                        </Button>
+                        
+                        {uploadResult && (
+                          <div className={cn(
+                            "flex items-center gap-2 p-3 rounded-lg text-sm",
+                            uploadResult.success 
+                              ? "bg-green-500/10 text-green-400 border border-green-500/20" 
+                              : "bg-red-500/10 text-red-400 border border-red-500/20"
+                          )}>
+                            {uploadResult.success ? (
+                              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                            ) : (
+                              <XCircle className="w-4 h-4 flex-shrink-0" />
+                            )}
+                            <span>{uploadResult.message}</span>
+                            {uploadResult.videoId && (
+                              <Link
+                                href={`/video/${uploadResult.videoId}`}
+                                className="ml-auto flex items-center gap-1 text-xs hover:underline"
+                                target="_blank"
+                              >
+                                View <ExternalLink className="w-3 h-3" />
+                              </Link>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                    
+                    {/* Delete Tab */}
+                    <TabsContent value="delete" className="mt-4 space-y-4">
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs text-neutral-400 mb-1.5 block">Video ID</label>
+                          <Input
+                            type="text"
+                            placeholder="Enter video ID to delete"
+                            value={deleteVideoId}
+                            onChange={(e) => setDeleteVideoId(e.target.value)}
+                            className="h-10 bg-neutral-800 border-neutral-700 focus:border-neutral-500 text-white placeholder:text-neutral-500"
+                          />
+                        </div>
+                        
+                        <Button
+                          onClick={handleDelete}
+                          disabled={deleting || !deleteVideoId.trim()}
+                          variant="destructive"
+                          className="w-full h-10 bg-red-600 hover:bg-red-700 text-white"
+                        >
+                          {deleting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete Video
+                            </>
+                          )}
+                        </Button>
+                        
+                        <p className="text-xs text-neutral-500 text-center">
+                          Warning: This action cannot be undone
+                        </p>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </DialogContent>
+              </Dialog>
             </nav>
 
             {/* Right Actions */}
@@ -242,6 +491,20 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
                   <Sparkles className="w-3.5 h-3.5" />
                   New
                 </Link>
+                
+                {/* Admin - Mobile */}
+                <Dialog open={adminOpen} onOpenChange={setAdminOpen}>
+                  <DialogTrigger asChild>
+                    <button
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium bg-neutral-800/50 text-neutral-400 hover:text-white"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Admin
+                    </button>
+                  </DialogTrigger>
+                </Dialog>
+                
                 <button
                   onClick={handleRandomVideo}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium bg-neutral-800/50 text-neutral-400"
